@@ -119,7 +119,33 @@ public final class IOKit {
             List<Core.Proceso> procesos = new ArrayList<>();
             for (int indice = 0; indice < archivos.size(); indice++) {
                 Path archivo = archivos.get(indice);
-                ProcesamientoArchivo resultado = leerArchivoProceso(archivo, indice);
+                ProcesamientoArchivo resultado = leerArchivoProceso(archivo, indice, null);
+                procesos.add(crearProcesoDesdeResultado(resultado, indice));
+            }
+            return procesos;
+        }
+
+        public static List<Core.Proceso> leerProcesos(Path directorioEntrada, int numeroProcesosEsperados, BufferedWriter bitacora) throws IOException {
+            if (!Files.exists(directorioEntrada) || !Files.isDirectory(directorioEntrada)) {
+                throw new IOException("Directorio de entrada inexistente: " + directorioEntrada);
+            }
+            List<Path> archivos = new ArrayList<>();
+            try (Stream<Path> flujo = Files.list(directorioEntrada)) {
+                flujo.filter(p -> p.getFileName().toString().startsWith("proc") && p.getFileName().toString().endsWith(".txt"))
+                        .forEach(archivos::add);
+            }
+            archivos.sort(Comparator.comparingInt(ruta -> extraerIndiceProceso(ruta)));
+
+            if (numeroProcesosEsperados > 0 && archivos.size() != numeroProcesosEsperados) {
+                throw new IOException("Se esperaban " + numeroProcesosEsperados + " procesos pero se encontraron " + archivos.size());
+            }
+
+            List<Core.Proceso> procesos = new ArrayList<>();
+            for (int indice = 0; indice < archivos.size(); indice++) {
+                Path archivo = archivos.get(indice);
+                UtilidadesLog.imprimir(bitacora, "PROC " + indice + " == Leyendo archivo de configuración ==");
+                ProcesamientoArchivo resultado = leerArchivoProceso(archivo, indice, bitacora);
+                UtilidadesLog.imprimir(bitacora, "PROC " + indice + "== Terminó de leer archivo de configuración ==");
                 procesos.add(crearProcesoDesdeResultado(resultado, indice));
             }
             return procesos;
@@ -135,10 +161,13 @@ public final class IOKit {
                 escritor.newLine();
                 for (Core.Proceso proceso : procesos) {
                     Core.Estadisticas estadisticas = proceso.estadisticas;
+                    long aciertosDerivados = Math.max(0L, (long) proceso.totalReferencias - estadisticas.fallos);
+                    double tasaFallos = estadisticas.tasaFallos(proceso.totalReferencias);
+                    double tasaExito = 1.0 - tasaFallos;
                     escritor.write(proceso.pid + "," + proceso.totalReferencias + "," + estadisticas.fallos + ","
-                            + estadisticas.aciertos + "," + estadisticas.swaps + ","
-                            + String.format(Locale.US, "%.4f", estadisticas.tasaFallos(proceso.totalReferencias)) + ","
-                            + String.format(Locale.US, "%.4f", estadisticas.tasaAciertos(proceso.totalReferencias)));
+                            + aciertosDerivados + "," + estadisticas.swaps + ","
+                            + String.format(Locale.US, "%.4f", tasaFallos) + ","
+                            + String.format(Locale.US, "%.4f", tasaExito));
                     escritor.newLine();
                 }
             }
@@ -157,7 +186,7 @@ public final class IOKit {
             return Integer.parseInt(numero);
         }
 
-        private static ProcesamientoArchivo leerArchivoProceso(Path ruta, int indiceEsperado) throws IOException {
+        private static ProcesamientoArchivo leerArchivoProceso(Path ruta, int indiceEsperado, BufferedWriter bitacora) throws IOException {
             List<String> lineas = Files.readAllLines(ruta, StandardCharsets.UTF_8);
             if (lineas.size() < 5) {
                 throw new IOException("Archivo de proceso incompleto: " + ruta);
@@ -167,6 +196,13 @@ public final class IOKit {
             int nc = obtenerValorEntero(lineas.get(2), "NC");
             int nr = obtenerValorEntero(lineas.get(3), "NR");
             int np = obtenerValorEntero(lineas.get(4), "NP");
+            if (bitacora != null) {
+                UtilidadesLog.imprimir(bitacora, "PROC " + indiceEsperado + "leyendo TP. Tam Páginas: " + tp);
+                UtilidadesLog.imprimir(bitacora, "PROC " + indiceEsperado + "leyendo NF. Num Filas: " + nf);
+                UtilidadesLog.imprimir(bitacora, "PROC " + indiceEsperado + "leyendo NC. Num Cols: " + nc);
+                UtilidadesLog.imprimir(bitacora, "PROC " + indiceEsperado + "leyendo NR. Num Referencias: " + nr);
+                UtilidadesLog.imprimir(bitacora, "PROC " + indiceEsperado + "leyendo NP. Num Paginas: " + np);
+            }
             List<Core.Referencia> referencias = new ArrayList<>();
 
             for (int i = 5; i < lineas.size(); i++) {
@@ -262,6 +298,15 @@ public final class IOKit {
             String nombre = "run_" + LocalDateTime.now().format(FORMATO) + ".log";
             Path ruta = directorioSalida.resolve(nombre);
             return Files.newBufferedWriter(ruta, StandardCharsets.UTF_8);
+        }
+
+        public static void imprimir(BufferedWriter bitacora, String mensaje) throws IOException {
+            System.out.println(mensaje);
+            if (bitacora != null) {
+                bitacora.write(mensaje);
+                bitacora.newLine();
+                bitacora.flush();
+            }
         }
     }
 }

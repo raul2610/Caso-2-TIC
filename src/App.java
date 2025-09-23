@@ -8,7 +8,7 @@ import java.util.Deque;
 import java.util.List;
 
 public class App {
-    
+
     public static void main(String[] argumentos) {
         if (argumentos.length == 0) {
             mostrarAyuda();
@@ -53,23 +53,26 @@ public class App {
 
     private static void ejecutarSimulacion(String[] argumentos) throws IOException {
         ParametrosSimulacion parametros = ParametrosSimulacion.desdeArgumentos(argumentos);
-        List<Core.Proceso> procesos = IOKit.EntradaSalidaProcesos.leerProcesos(parametros.directorioEntrada, parametros.numeroProcesos);
         try (BufferedWriter bitacora = IOKit.UtilidadesLog.crearEscritorLog(parametros.directorioSalida)) {
+            IOKit.UtilidadesLog.imprimir(bitacora, "Inicio:");
+            List<Core.Proceso> procesos = IOKit.EntradaSalidaProcesos.leerProcesos(parametros.directorioEntrada, parametros.numeroProcesos, bitacora);
             SimuladorMotor motor = new SimuladorMotor(procesos, parametros.totalMarcos, parametros.numeroProcesos, bitacora);
+            IOKit.UtilidadesLog.imprimir(bitacora, "Simulación:");
             motor.ejecutar();
+            IOKit.EntradaSalidaProcesos.escribirCsvEstadisticas(procesos, parametros.directorioSalida);
+            imprimirResumen(procesos);
         }
-        IOKit.EntradaSalidaProcesos.escribirCsvEstadisticas(procesos, parametros.directorioSalida);
-        imprimirResumen(procesos);
     }
 
     private static void imprimirResumen(List<Core.Proceso> procesos) {
         for (Core.Proceso proceso : procesos) {
             Core.Estadisticas estadisticas = proceso.estadisticas;
+            long aciertosDerivados = Math.max(0L, (long) proceso.totalReferencias - estadisticas.fallos);
             double tasaFallos = estadisticas.tasaFallos(proceso.totalReferencias);
-            double tasaAciertos = estadisticas.tasaAciertos(proceso.totalReferencias);
-            System.out.printf("Proceso %d: NR=%d, Fallos=%d, Aciertos=%d, SWAP=%d, Tasa fallos=%.4f, Tasa exito=%.4f%n",
-                    proceso.pid, proceso.totalReferencias, estadisticas.fallos, estadisticas.aciertos,
-                    estadisticas.swaps, tasaFallos, tasaAciertos);
+            double tasaExito = 1.0 - tasaFallos;
+            System.out.printf("Proceso %d: \n-NR=%d \n-Fallos=%d \n-Aciertos=%d \n-SWAP=%d \n-Tasa fallos=%.4f \n-Tasa exito=%.4f%n",
+                    proceso.pid, proceso.totalReferencias, estadisticas.fallos, aciertosDerivados,
+                    estadisticas.swaps, tasaFallos, tasaExito);
         }
     }
 
@@ -174,7 +177,6 @@ public class App {
         }
 
         void ejecutar() throws IOException {
-            escribirBitacora("Inicio de la simulacion");
             Deque<Core.Proceso> cola = new ArrayDeque<>(procesos);
             while (!cola.isEmpty()) {
                 Core.Proceso proceso = cola.pollFirst();
@@ -183,28 +185,29 @@ public class App {
                     continue;
                 }
                 Core.Referencia referencia = proceso.referenciaActual();
-                escribirBitacora("Turno proceso " + proceso.pid + " referencia " + proceso.indiceReferenciaActual
-                        + " -> VPN " + referencia.numeroPagina + " offset " + referencia.desplazamiento + " op " + referencia.operacion);
+                IOKit.UtilidadesLog.imprimir(bitacora, "Turno proc: " + proceso.pid);
+                IOKit.UtilidadesLog.imprimir(bitacora, "PROC " + proceso.pid + " analizando linea_: " + proceso.indiceReferenciaActual);
                 ResultadoAcceso resultado = resolverAcceso(proceso, referencia);
                 if (resultado.esAcierto) {
-                    proceso.estadisticas.aciertos++;
+                    if (!proceso.huboFalloEnReferenciaActual) { proceso.estadisticas.aciertos++; }
+                    proceso.hitsEvento++;
                     proceso.indiceReferenciaActual++;
-                    escribirBitacora("Proceso " + proceso.pid + " hit en marco "
-                            + proceso.tablaPaginas.obtenerMarcoParaVpn(referencia.numeroPagina));
+                    proceso.huboFalloEnReferenciaActual = false;
+                    IOKit.UtilidadesLog.imprimir(bitacora, "PROC " + proceso.pid + " hits: " + proceso.hitsEvento);
                 } else {
                     proceso.estadisticas.fallos++;
                     proceso.estadisticas.swaps += resultado.swapsGenerados;
-                    escribirBitacora("Proceso " + proceso.pid + " fallo -> swaps +" + resultado.swapsGenerados);
+                    proceso.huboFalloEnReferenciaActual = true;
+                    IOKit.UtilidadesLog.imprimir(bitacora, "PROC " + proceso.pid + " falla de pag: " + proceso.estadisticas.fallos);
                 }
+                IOKit.UtilidadesLog.imprimir(bitacora, "PROC " + proceso.pid + " envejecimiento");
                 if (!proceso.tieneReferenciasPendientes()) {
                     proceso.finalizado = true;
-                    escribirBitacora("Proceso " + proceso.pid + " ha finalizado sus referencias");
                     finalizarProceso(proceso, cola);
                 } else {
                     cola.offerLast(proceso);
                 }
             }
-            escribirBitacora("Fin de la simulacion");
         }
 
         private void inicializarMarcos() throws IOException {
@@ -217,8 +220,8 @@ public class App {
                     marco.limpiar();
                     marco.pidDueno = proceso.pid;
                     proceso.marcosAsignados.add(marco.idMarco);
+                    IOKit.UtilidadesLog.imprimir(bitacora, "Proceso " + proceso.pid + ": recibe marco " + marco.idMarco);
                 }
-                escribirBitacora("Asignacion inicial: proceso " + proceso.pid + " recibe " + proceso.marcosAsignados.size() + " marcos");
             }
         }
 
@@ -279,6 +282,9 @@ public class App {
 
         private void finalizarProceso(Core.Proceso proceso, Deque<Core.Proceso> cola) throws IOException {
             if (!proceso.marcosAsignados.isEmpty()) {
+                IOKit.UtilidadesLog.imprimir(bitacora, "========================");
+                IOKit.UtilidadesLog.imprimir(bitacora, "Termino proc: " + proceso.pid);
+                IOKit.UtilidadesLog.imprimir(bitacora, "========================");
                 List<Integer> marcosLiberados = new ArrayList<>(proceso.marcosAsignados);
                 for (Integer idMarco : marcosLiberados) {
                     Core.Marco marco = marcos.get(idMarco);
@@ -288,6 +294,7 @@ public class App {
                     marco.vpnCargada = null;
                     marco.pidDueno = null;
                     marco.ultimaReferencia = 0L;
+                    IOKit.UtilidadesLog.imprimir(bitacora, "PROC " + proceso.pid + " removiendo marco: " + idMarco);
                 }
                 proceso.marcosAsignados.clear();
                 Core.Proceso destino = seleccionarProcesoConMasFallos(cola);
@@ -296,10 +303,10 @@ public class App {
                         Core.Marco marco = marcos.get(idMarco);
                         marco.pidDueno = destino.pid;
                         destino.marcosAsignados.add(idMarco);
+                        IOKit.UtilidadesLog.imprimir(bitacora, "PROC " + destino.pid + " asignando marco nuevo " + idMarco);
                     }
-                    escribirBitacora("Reasignacion: marcos de proceso " + proceso.pid + " entregados a proceso " + destino.pid);
                 } else {
-                    escribirBitacora("No hay procesos activos para reasignar marcos de proceso " + proceso.pid);
+                    IOKit.UtilidadesLog.imprimir(bitacora, "No hay procesos activos para reasignar marcos de proceso " + proceso.pid);
                 }
             }
         }

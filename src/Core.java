@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 public final class Core {
-    
+
     private Core() {}
 
     public static final class Referencia {
@@ -92,6 +92,8 @@ public final class Core {
         public final Estadisticas estadisticas = new Estadisticas();
         public int indiceReferenciaActual;
         public boolean finalizado;
+        public boolean huboFalloEnReferenciaActual;
+        public long hitsEvento;
 
         public Proceso(int pid, int tamanoPagina, int numeroFilas, int numeroColumnas,
                         int totalReferencias, int totalPaginas, List<Referencia> referencias) {
