@@ -6,7 +6,7 @@ Simulador de memoria virtual con paginación por demanda.
 - Sergio Soler
 
 ## Cómo ejecutar
-- Compilar: `javac -d out src\*.java`
+Compilar: `javac -d out src\*.java`
     Solo compila este comando cuando se abre desde otro computador sin carpeta out, cambie el src, configs, entradas o parametros de linea de comandos.
 
 ### Opción 1
