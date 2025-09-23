@@ -8,6 +8,7 @@ import java.util.Deque;
 import java.util.List;
 
 public class App {
+    
     public static void main(String[] argumentos) {
         if (argumentos.length == 0) {
             mostrarAyuda();

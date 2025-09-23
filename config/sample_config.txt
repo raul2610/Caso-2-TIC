@@ -1,4 +1,3 @@
-# Ejemplo de archivo de configuración para Opción 1
 TP=128
 NPROC=2
 TAMS=4x4,8x8

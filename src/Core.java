@@ -4,9 +4,8 @@ import java.util.List;
 import java.util.Map;
 
 public final class Core {
-    private Core() {
-        // Contenedor utilitario para los modelos del dominio.
-    }
+    
+    private Core() {}
 
     public static final class Referencia {
         public final char identificadorMatriz;

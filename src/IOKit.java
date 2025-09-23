@@ -13,9 +13,8 @@ import java.util.Locale;
 import java.util.stream.Stream;
 
 public final class IOKit {
-    private IOKit() {
-        // Utilitario de entrada y salida.
-    }
+    
+    private IOKit() {}
 
     public static final class Configuracion {
         public final int tamanoPagina;
