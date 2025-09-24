@@ -3,7 +3,7 @@ Simulador de memoria virtual con paginación por demanda.
 
 ## Grupo 19
 - Raúl Sebastián Ruiz Aragón: 202321332
-- Sergio Soler
+- Sergio Soler: 202310103
 
 ## Cómo ejecutar
 Compilar: `javac -d out src\*.java`
